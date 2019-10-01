@@ -85,7 +85,6 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     """ N layer decoder with masking"""
-
     def __init__(self, layer, N):
         super(Decoder, self).__init__()
         self.layers = utils.clones(layer, N)

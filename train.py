@@ -47,7 +47,7 @@ class Batch:
     @staticmethod
     def make_std_mask(tgt, pad):
         """ create a mask to hide padding and future words"""
-        tgt_mask = (tgt != pad).unsqueeze(-2)
+        tgt_mask = (tgt != pad).unsqueeze(-2) # pad mask
         tgt_mask = tgt_mask & Variable(utils.subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data))
         return tgt_mask
 
