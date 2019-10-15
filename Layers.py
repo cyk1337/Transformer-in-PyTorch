@@ -222,14 +222,103 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
+class MultiHeadedAttention_RPR(nn.Module):
+    def __init__(self, h, d_model, max_relative_position=5, dropout=.0):
+        """
+        multi-head attention
+        :param h: nhead
+        :param d_model: d_model
+        :param dropout: float
+        """
+        super(MultiHeadedAttention_RPR, self).__init__()
+        assert d_model % h == 0
+        #  assume d_v always equals d_k
+        self.d_k = d_model // h
+        self.h = h
+        self.linears = utils.clones(nn.Linear(d_model, d_model), 4)
+        self.dropout = nn.Dropout(p=dropout)
+        self.max_relative_position = max_relative_position
+
+    def forward(self, query, key, value, mask=None):
+        """
+        ---------------------------
+        L : target sequence length
+        S : source sequence length:
+        N : batch size
+        E : embedding dim
+        ---------------------------
+        :param query: (N,L,E)
+        :param key: (N,S,E)
+        :param value: (N,S,E)
+        :param mask:
+        """
+        if mask is not None:
+            # Same mask applied to all h heads.
+            mask = mask.unsqueeze(1)
+        nbatches = query.size(0)  # batch size
+        seq_len = query.size(1)
+        # 1) split embedding dim to h heads : from d_model => h * d_k
+        # dim: (nbatch, h, seq_length, d_model//h)
+        query, key, value = \
+            [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+             for l, x in zip(self.linears, (query, key, value))]
+
+        # 2) rpr
+        relation_keys = self.generate_relative_positions_embeddings(seq_len, seq_len, self.d_k,
+                                                                    self.max_relative_position)
+        relation_values = self.generate_relative_positions_embeddings(seq_len, seq_len, self.d_k,
+                                                                      self.max_relative_position)
+        logits = self._relative_attn_inner(query, key, relation_keys, True)
+        weights = self.dropout(F.softmax(logits, -1))
+        x = self._relative_attn_inner(weights, value, relation_values, False)
+        # 3) "Concat" using a view and apply a final linear.
+        # dim: (nbatch, h, d_model)
+        x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k)
+        return self.linears[-1](x)
+
+    def _generate_relative_positions_matrix(self, d_q, d_k, max_relative_position):
+        assert d_k == d_q
+        range_vec_q = range_vec_k = torch.arange(d_q)
+        distance_mat = range_vec_k.unsqueeze(0) - range_vec_q.unsqueeze(-1)
+        disntance_mat_clipped = torch.clamp(distance_mat, -max_relative_position, max_relative_position)
+        return disntance_mat_clipped + max_relative_position
+
+    def generate_relative_positions_embeddings(self, len_q, len_k, depth, max_relative_position):
+        relative_position_matrix = self._generate_relative_positions_matrix(len_q, len_k, max_relative_position)
+        vocab_size = max_relative_position * 2 + 1
+        embeddings_table = nn.Embedding(vocab_size, depth)
+        embeddings = embeddings_table(relative_position_matrix)
+        return embeddings
+
+    def _relative_attn_inner(self, x, y, z, transpose):
+        nbatches = x.size(0)
+        heads = x.size(1)
+        seq_len = x.size(2)
+
+        # (N, h, s, s)
+        xy_matmul = torch.matmul(x, y.transpose(-1, -2) if transpose else y)
+
+        # (s, N, h, d) => (s, N*h, d)
+        x_t_v = x.permute(2, 0, 1, 3).contiguous().view(seq_len, nbatches * heads, -1)
+        # (s, N*h, d) @ (s, d, s) => (s, N*h, s)
+        x_tz_matmul = torch.matmul(x_t_v, z.transpose(-1, -2) if transpose else z)
+        # (N, h, s, s)
+        x_tz_matmul_v_t = x_tz_matmul.view(seq_len, nbatches, heads, -1).permute(1, 2, 0, 3)
+        return xy_matmul + x_tz_matmul_v_t
+
+
 if __name__ == '__main__':
-    import os
-
-    os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
-    plt.figure(figsize=(15, 5))
-    pe = PositionalEncoding(20, 0)
-    y = pe.forward(Variable(torch.zeros(1, 100, 20)))
-    plt.plot(np.arange(100), y[0, :, 4:8].data.numpy())
-    plt.legend(["dim %d" % p for p in list(range(4, 8))])
-    plt.show()
+    # import os
+    #
+    # os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+    #
+    # plt.figure(figsize=(15, 5))
+    # pe = PositionalEncoding(20, 0)
+    # y = pe.forward(Variable(torch.zeros(1, 100, 20)))
+    # plt.plot(np.arange(100), y[0, :, 4:8].data.numpy())
+    # plt.legend(["dim %d" % p for p in list(range(4, 8))])
+    # plt.show()
+    pe = MultiHeadedAttention_RPR(8, 256)
+    x = torch.randn((64, 10, 256))
+    y = pe(x, x, x)
+    print(y.size())
