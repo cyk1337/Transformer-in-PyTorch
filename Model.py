@@ -105,8 +105,8 @@ class Decoder(nn.Module):
 def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=.1):
     """ construct model from hyper-parameters"""
     c = copy.deepcopy
-    attn_rpr = MultiHeadedAttention_RPR(h, d_model, max_relative_position=5)
-    attn = MultiHeadedAttention(h, d_model)
+    attn_rpr = MultiHeadedAttention_RPR(d_model, h, max_relative_position=5)
+    attn = MultiHeadedAttention(d_model, h)
     ff = PositionwiseFeedForward(d_model, d_ff, dropout)
     position = PositionalEncoding(d_model, dropout)
     model = EncoderDecoder(

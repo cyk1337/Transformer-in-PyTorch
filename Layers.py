@@ -132,7 +132,7 @@ def attention(query, key, value, mask=None, dropout=None):
 
 
 class MultiHeadedAttention(nn.Module):
-    def __init__(self, h, d_model, dropout=0.1):
+    def __init__(self, d_model, h, dropout=0.1):
         """
         multi-head attention
         :param h: nhead
@@ -223,7 +223,7 @@ class PositionalEncoding(nn.Module):
 
 
 class MultiHeadedAttention_RPR(nn.Module):
-    def __init__(self, h, d_model, max_relative_position, dropout=.0):
+    def __init__(self, d_model, h, max_relative_position, dropout=.0):
         """
         multi-head attention
         :param h: nhead
@@ -237,6 +237,7 @@ class MultiHeadedAttention_RPR(nn.Module):
         self.h = h
         self.linears = utils.clones(nn.Linear(d_model, d_model), 4)
         self.dropout = nn.Dropout(p=dropout)
+
         self.max_relative_position = max_relative_position
         self.vocab_size = max_relative_position * 2 + 1
         self.embeddings_table = nn.Embedding(self.vocab_size, self.d_k)
@@ -273,14 +274,28 @@ class MultiHeadedAttention_RPR(nn.Module):
         x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k)
         return self.linears[-1](x)
 
-    def _generate_relative_positions_matrix(self, d_q, d_k):
-        assert d_k == d_q
-        range_vec_q = range_vec_k = torch.arange(d_q)
+    def _generate_relative_positions_matrix(self, len_q, len_k):
+        """
+        genetate rpr matrix
+        ---------------------------
+        :param len_q: seq_len
+        :param len_k: seq_len
+        :return: rpr matrix, dim: (len_q, len_q)
+        """
+        assert len_q == len_k
+        range_vec_q = range_vec_k = torch.arange(len_q)
         distance_mat = range_vec_k.unsqueeze(0) - range_vec_q.unsqueeze(-1)
         disntance_mat_clipped = torch.clamp(distance_mat, -self.max_relative_position, self.max_relative_position)
         return disntance_mat_clipped + self.max_relative_position
 
     def generate_relative_positions_embeddings(self, len_q, len_k):
+        """
+        generate relative position embedding
+        ----------------------
+        :param len_q:
+        :param len_k:
+        :return: rpr embedding, dim: (len_q, len_q, d_k)
+        """
         relative_position_matrix = self._generate_relative_positions_matrix(len_q, len_k)
         return self.embeddings_table(relative_position_matrix)
 
