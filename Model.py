@@ -33,10 +33,12 @@ import torch.nn.functional as F
 import numpy as np
 import math, copy, time
 import seaborn
+
 seaborn.set_context(context="talk")
 
 import utils
-from Layers import MultiHeadedAttention, PositionwiseFeedForward, PositionalEncoding, EncoderLayer, DecoderLayer, Embeddings, MultiHeadedAttention_RPR
+from Layers import MultiHeadedAttention, PositionwiseFeedForward, PositionalEncoding, EncoderLayer, DecoderLayer, \
+    Embeddings, MultiHeadedAttention_RPR
 
 
 class EncoderDecoder(nn.Module):
@@ -70,8 +72,10 @@ class Generator(nn.Module):
     def forward(self, x):
         return F.softmax(self.proj(x), dim=-1)
 
+
 class Encoder(nn.Module):
     """ Core encoder -> a stack of N layers """
+
     def __init__(self, layer, N):
         super(Encoder, self).__init__()
         self.layers = utils.clones(layer, N)
@@ -83,8 +87,10 @@ class Encoder(nn.Module):
             x = layer(x, mask)
         return self.norm(x)
 
+
 class Decoder(nn.Module):
     """ N layer decoder with masking"""
+
     def __init__(self, layer, N):
         super(Decoder, self).__init__()
         self.layers = utils.clones(layer, N)
@@ -95,10 +101,11 @@ class Decoder(nn.Module):
             x = layer(x, memory, src_mask, tgt_mask)
         return self.norm(x)
 
+
 def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=.1):
     """ construct model from hyper-parameters"""
     c = copy.deepcopy
-    attn_rpr = MultiHeadedAttention_RPR(h, d_model)
+    attn_rpr = MultiHeadedAttention_RPR(h, d_model, max_relative_position=5)
     attn = MultiHeadedAttention(h, d_model)
     ff = PositionwiseFeedForward(d_model, d_ff, dropout)
     position = PositionalEncoding(d_model, dropout)

@@ -223,7 +223,7 @@ class PositionalEncoding(nn.Module):
 
 
 class MultiHeadedAttention_RPR(nn.Module):
-    def __init__(self, h, d_model, max_relative_position=5, dropout=.0):
+    def __init__(self, h, d_model, max_relative_position, dropout=.0):
         """
         multi-head attention
         :param h: nhead
@@ -238,6 +238,8 @@ class MultiHeadedAttention_RPR(nn.Module):
         self.linears = utils.clones(nn.Linear(d_model, d_model), 4)
         self.dropout = nn.Dropout(p=dropout)
         self.max_relative_position = max_relative_position
+        self.vocab_size = max_relative_position * 2 + 1
+        self.embeddings_table = nn.Embedding(self.vocab_size, self.d_k)
 
     def forward(self, query, key, value, mask=None):
         """
@@ -252,9 +254,6 @@ class MultiHeadedAttention_RPR(nn.Module):
         :param value: (N,S,E)
         :param mask:
         """
-        if mask is not None:
-            # Same mask applied to all h heads.
-            mask = mask.unsqueeze(1)
         nbatches = query.size(0)  # batch size
         seq_len = query.size(1)
         # 1) split embedding dim to h heads : from d_model => h * d_k
@@ -264,10 +263,8 @@ class MultiHeadedAttention_RPR(nn.Module):
              for l, x in zip(self.linears, (query, key, value))]
 
         # 2) rpr
-        relation_keys = self.generate_relative_positions_embeddings(seq_len, seq_len, self.d_k,
-                                                                    self.max_relative_position)
-        relation_values = self.generate_relative_positions_embeddings(seq_len, seq_len, self.d_k,
-                                                                      self.max_relative_position)
+        relation_keys = self.generate_relative_positions_embeddings(seq_len, seq_len)
+        relation_values = self.generate_relative_positions_embeddings(seq_len, seq_len)
         logits = self._relative_attn_inner(query, key, relation_keys, True)
         weights = self.dropout(F.softmax(logits, -1))
         x = self._relative_attn_inner(weights, value, relation_values, False)
@@ -276,19 +273,16 @@ class MultiHeadedAttention_RPR(nn.Module):
         x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k)
         return self.linears[-1](x)
 
-    def _generate_relative_positions_matrix(self, d_q, d_k, max_relative_position):
+    def _generate_relative_positions_matrix(self, d_q, d_k):
         assert d_k == d_q
         range_vec_q = range_vec_k = torch.arange(d_q)
         distance_mat = range_vec_k.unsqueeze(0) - range_vec_q.unsqueeze(-1)
-        disntance_mat_clipped = torch.clamp(distance_mat, -max_relative_position, max_relative_position)
-        return disntance_mat_clipped + max_relative_position
+        disntance_mat_clipped = torch.clamp(distance_mat, -self.max_relative_position, self.max_relative_position)
+        return disntance_mat_clipped + self.max_relative_position
 
-    def generate_relative_positions_embeddings(self, len_q, len_k, depth, max_relative_position):
-        relative_position_matrix = self._generate_relative_positions_matrix(len_q, len_k, max_relative_position)
-        vocab_size = max_relative_position * 2 + 1
-        embeddings_table = nn.Embedding(vocab_size, depth)
-        embeddings = embeddings_table(relative_position_matrix)
-        return embeddings
+    def generate_relative_positions_embeddings(self, len_q, len_k):
+        relative_position_matrix = self._generate_relative_positions_matrix(len_q, len_k)
+        return self.embeddings_table(relative_position_matrix)
 
     def _relative_attn_inner(self, x, y, z, transpose):
         nbatches = x.size(0)
@@ -297,7 +291,6 @@ class MultiHeadedAttention_RPR(nn.Module):
 
         # (N, h, s, s)
         xy_matmul = torch.matmul(x, y.transpose(-1, -2) if transpose else y)
-
         # (s, N, h, d) => (s, N*h, d)
         x_t_v = x.permute(2, 0, 1, 3).contiguous().view(seq_len, nbatches * heads, -1)
         # (s, N*h, d) @ (s, d, s) => (s, N*h, s)
