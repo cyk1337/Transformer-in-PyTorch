@@ -223,7 +223,7 @@ class PositionalEncoding(nn.Module):
 
 
 class MultiHeadedAttention_RPR(nn.Module):
-    """ @ author: Yekun CHAI"""
+    """ @ author: Yekun CHAI """
     def __init__(self, d_model, h, max_relative_position, dropout=.0):
         """
         multi-head attention
