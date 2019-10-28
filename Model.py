@@ -79,10 +79,12 @@ class Encoder(nn.Module):
     def __init__(self, layer, N):
         super(Encoder, self).__init__()
         self.layers = utils.clones(layer, N)
-        self.norm = nn.LayerNorm(layer.size)
+        size = layer.size
+        self.norm = nn.LayerNorm(size)
 
     def forward(self, x, mask):
         """ pass input and mask through each layer in turn"""
+
         for layer in self.layers:
             x = layer(x, mask)
         return self.norm(x)
@@ -110,6 +112,7 @@ def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=.
     ff = PositionwiseFeedForward(d_model, d_ff, dropout)
     position = PositionalEncoding(d_model, dropout)
     model = EncoderDecoder(
+
         Encoder(EncoderLayer(d_model, c(attn_rpr), c(ff), dropout), N),
         Decoder(DecoderLayer(d_model, c(attn_rpr), c(attn), c(ff), dropout), N),
         nn.Sequential(Embeddings(d_model, src_vocab), c(position)),

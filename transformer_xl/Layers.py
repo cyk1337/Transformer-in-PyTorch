@@ -489,7 +489,7 @@ class MemTransformerLM(nn.Module):
             if tie_weight:
                 self.out_layer.weight = self.word_emb.weight
             self.tie_weight = tie_weight
-            pass
+            raise NotImplementedError
 
 
 if __name__ == '__main__':

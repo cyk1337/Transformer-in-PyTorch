@@ -76,8 +76,10 @@ class EncoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = utils.clones(SublayerConnection(size, dropout), 2)
         self.size = size
+        self.local_rnn = LocalRNNLayer(size, dropout)
 
     def forward(self, x, mask):
+        x = self.local_rnn(x)
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
         return self.sublayer[1](x, self.feed_forward)
 
@@ -191,7 +193,73 @@ class PositionwiseFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+        # return self.w_2(self.dropout(F.relu(self.w_1(x))))
+
+        ## Swish
+        x = self.w_1(x)
+        x *= F.sigmoid(x)
+        return self.w_2(self.dropout(x))
+
+
+class LocalRNNLayer(nn.Module):
+    def __init__(self, size, dropout=.0):
+        super(LocalRNNLayer, self).__init__()
+        self.local_rnn = LocalRNN(size, size, window_size=5)
+        self.sublayer = SublayerConnection(size, dropout)
+
+    def forward(self, x):
+        return self.sublayer(x, self.local_rnn)
+
+
+class LocalRNN(nn.Module):
+    """ R transformer"""
+
+    def __init__(self, input_size, output_size, window_size, rnn_type='GRU', MAX_LENGTH=10000):
+        super(LocalRNN, self).__init__()
+        self.window_size = window_size
+        if rnn_type == 'GRU':
+            # set `batch_first`=True so that the input and output dim are both (nBatch, seq_len, d_model)
+            self.rnn = nn.GRU(output_size, output_size, batch_first=True)
+        elif rnn_type == 'LSTM':
+            self.rnn = nn.LSTM(output_size, output_size, batch_first=True)
+        else:
+            self.rnn = nn.RNN(output_size, output_size, batch_first=True)
+        # self.output = nn.Sequential(nn.Linear(output_size, output_size), nn.ReLU())
+
+        # generate segments according to window_size.
+        # -> e.g. window size = 4, generate [1,2,3,4,
+        #                                      2,3,4,5,
+        #                                        3,4,5,6,
+        #                                          4,5,6,7,
+        #                                              ...
+        #                                                  MAX_LEN - 1 -k ,... , MAX_LEN-2, MAX_LEN-1]
+        idx = [i for j in range(window_size - 1, MAX_LENGTH) for i in range(j - (window_size - 1), j + 1)]
+        self.idx = torch.LongTensor(idx)
+        # padding (k-1) before the beginning of the sequence
+        self.zeros_pad = torch.zeros((window_size - 1, input_size))
+
+    def forward(self, x):
+        """ regard window size dim as batch dim"""
+        assert x.dim() == 3, '3 dimensions of input expected!'
+        nbatches, seq_len, d_model = x.size()
+
+        x = self._gather_seg_sequence(x)
+        output, _ = self.rnn(x)
+        h_last_per_batch = output[:, -1, :]
+        return h_last_per_batch.view(nbatches, seq_len, d_model)
+
+    def _gather_seg_sequence(self, x):
+        nbatch, seq_len, d_model = x.size()
+        # use `repeat` to pad one batch -> (nbatch, k01, input_size)
+        zeros = self.zeros_pad.repeat(bsz, 1, 1)
+        # concat padded zeros and the sequence along the sequence dim
+        x = torch.cat((zeros, x), dim=1)
+        # gather the corresponding embeddings along the sequence dim (1)
+        idx = self.idx[:self.window_size * seq_len]  #
+        x_ = torch.index_select(input=x, dim=1, index=idx)
+        # reshape -> (bsz * seq_len, window_size, d_model)
+        x_ = x_.reshape(nbatch * seq_len, self.window_size, -1)
+        return x_
 
 
 class Embeddings(nn.Module):
@@ -224,6 +292,7 @@ class PositionalEncoding(nn.Module):
 
 class MultiHeadedAttention_RPR(nn.Module):
     """ @ author: Yekun CHAI """
+
     def __init__(self, d_model, h, max_relative_position, dropout=.0):
         """
         multi-head attention
