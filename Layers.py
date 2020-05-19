@@ -249,8 +249,8 @@ class LocalRNN(nn.Module):
         return h_last_per_batch.view(nbatches, seq_len, d_model)
 
     def _gather_seg_sequence(self, x):
-        nbatch, seq_len, d_model = x.size()
-        # use `repeat` to pad one batch -> (nbatch, k01, input_size)
+        bsz, seq_len, d_model = x.size()
+        # use `repeat` to pad one batch -> (bsz, k01, input_size)
         zeros = self.zeros_pad.repeat(bsz, 1, 1)
         # concat padded zeros and the sequence along the sequence dim
         x = torch.cat((zeros, x), dim=1)
