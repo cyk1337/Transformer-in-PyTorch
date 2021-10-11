@@ -251,7 +251,7 @@ class LocalRNN(nn.Module):
     def _gather_seg_sequence(self, x):
         nbatch, seq_len, d_model = x.size()
         # use `repeat` to pad one batch -> (nbatch, k01, input_size)
-        zeros = self.zeros_pad.repeat(bsz, 1, 1)
+        zeros = self.zeros_pad.repeat(nbatch, 1, 1)
         # concat padded zeros and the sequence along the sequence dim
         x = torch.cat((zeros, x), dim=1)
         # gather the corresponding embeddings along the sequence dim (1)
