@@ -1,6 +1,6 @@
 # Transformer-in-PyTorch
 ![GitHub](https://img.shields.io/github/license/cyk1337/Transformer-in-Pytorch)
-- This repo contains the Transformer variants implementation in PyTorch (`Transformer` / `Transformer-XL` / `R-Transformer`). You are 
+- This repo contains the Transformer variants implementation in PyTorch (`Transformer` / `Transformer-XL` / `R-Transformer`). PR is welcome.
 - If you are unfamilar with Transformer and its variants, refer to my blog:  [transformer explanation](http://ychai.uk/notes/2019/01/22/NLP/Attention-in-a-nutshell/#Transformer).
 
 ## Citation
